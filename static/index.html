@@ -108,6 +108,13 @@
         .info-container .list-container {
             width: 48%; /* Gör så att båda delarna får ungefär hälften av utrymmet */
         }
+
+        #chargingInfo {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #007bff;
+        }
     </style>
 </head>
 <body>
@@ -142,12 +149,15 @@
         </div>
 
         <p><strong>Status:</strong> <span id="status">Inget pågående laddning</span></p>
+        <div id="chargingInfo"></div>
     </div>
 
     <script>
         let batteryLevel = 20; // Startnivå på batteri
         let chargingInterval;
         let targetLevel = 100; // Standardmål för laddning
+        let maxAllowedConsumption = 3.0; // Max hushållsförbrukning innan laddning tillåts
+        let householdConsumptionData = []; // Variabel för att lagra hushållsförbrukning
 
         // Hämta och visa elpriser
         function fetchElectricityPrice() {
@@ -168,7 +178,10 @@
             fetch('/household_consumption')
                 .then(response => response.json())
                 .then(data => {
-                    const consumptionList = data.household_consumption.map((consumption, index) => `Timme ${index + 1}: ${consumption.toFixed(2)} kWh`);
+                    householdConsumptionData = data.household_consumption; // Spara hushållsförbrukning i variabel
+                    const consumptionList = householdConsumptionData.map((consumption, index) => 
+                        `Timme ${index + 1}: ${consumption.toFixed(2)} kWh`
+                    );
                     document.getElementById('householdConsumption').innerHTML = consumptionList.join('<br>');
                 })
                 .catch(err => {
@@ -185,19 +198,56 @@
         }
 
         // Starta laddning till vald nivå (80% eller 100%)
-        function startCharging(target) {
-            targetLevel = target; // Sätt målnivån till 80% eller 100%
-            document.getElementById('status').textContent = "Laddning pågår";
-            chargingInterval = setInterval(() => {
-                if (batteryLevel < targetLevel) {
-                    batteryLevel++; // Ladda batteriet med 1% per sekund
-                    updateBatteryDisplay();
-                } else {
-                    clearInterval(chargingInterval); // Stoppa laddningen när målet är nått
-                    document.getElementById('status').textContent = "Laddning klar";
-                }
-            }, 100); // Uppdatera varje sekund
-        }
+function startCharging(target) {
+    // Kontrollera om hushållsförbrukningen är under max tillåten förbrukning
+    if (Math.max(...householdConsumptionData) <= maxAllowedConsumption) {
+        targetLevel = target; // Sätt målnivån till 80% eller 100%
+        document.getElementById('status').textContent = "Laddning pågår";
+
+        fetch('/charge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target: targetLevel })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "Charging in progress") {
+                // Visa starttid för laddning och om det sker med lägsta pris
+                document.getElementById('status').textContent = `Laddning startad vid: ${data.charging_start_time}`;
+                const lowestPriceTime = data.lowest_price_time;
+                const lowestPrice = data.lowest_price.toFixed(2);
+                document.getElementById('chargingInfo').innerHTML = `Laddning sker med lägsta pris: ${lowestPrice} SEK vid timme ${lowestPriceTime + 1}.`;
+
+                // Börja långsammare laddning genom att använda setInterval
+                let currentBatteryLevel = batteryLevel; // Startnivå
+                const increment = 6; // Increment per intervall (1% per gång)
+                const intervalTime = 500; // Intervalltid i ms (1 sekund)
+                
+                // Skapa ett intervall för långsam laddning
+                chargingInterval = setInterval(() => {
+                    if (currentBatteryLevel < targetLevel) {
+                        currentBatteryLevel += increment; // Öka batterinivån
+                        if (currentBatteryLevel > targetLevel) {
+                            currentBatteryLevel = targetLevel; // Se till att den inte överskrider målnivån
+                        }
+                        batteryLevel = currentBatteryLevel; // Uppdatera den globala batterinivån
+                        updateBatteryDisplay(); // Uppdatera batterivisualisering på sidan
+                    } else {
+                        clearInterval(chargingInterval); // Stoppa intervall när målnivå är nådd
+                        document.getElementById('status').textContent = "Laddning slutförd";
+                    }
+                }, intervalTime); // Intervall på 1 sekund (kan justeras för att göra det långsammare eller snabbare)
+            }
+        })
+        .catch(err => {
+            document.getElementById('status').textContent = 'Fel vid laddning';
+            console.error('Error starting charging:', err);
+        });
+    } else {
+        document.getElementById('status').textContent = "För hög hushållsförbrukning, kan inte ladda!";
+    }
+}
+
 
         // Stoppa laddning
         function stopCharging() {
