@@ -41,33 +41,38 @@ def get_household_consumption():
 
 # Simulated battery charging
 battery_level = 20  # Start battery level
+charging_start_time = None  # Start time of charging
+lowest_price_time = None  # Time of lowest price
+
 @app.route('/charge', methods=['POST'])
 def start_charging():
-    global battery_level
+    global battery_level, charging_start_time, lowest_price_time
     try:
         target = request.json.get('target')
+
+        # Hämta elpriser för att kolla vilket som är det lägsta priset
+        price_data = [random.uniform(0.5, 1.0) for _ in range(24)]
+        lowest_price = min(price_data)
+        lowest_price_time = price_data.index(lowest_price)
+
+        # Starta laddning om batterinivån är lägre än målet
         if battery_level < target:
+            charging_start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # Logga starttiden
             while battery_level < target:
-                battery_level += 1  # Charge by 1% at a time
+                battery_level += 1  # Ladda med 1% åt gången
         return jsonify({
             "status": "Charging in progress",
-            "battery_level": battery_level
+            "battery_level": battery_level,
+            "charging_start_time": charging_start_time,
+            "lowest_price_time": lowest_price_time,  # Tidpunkt för lägsta elpris
+            "lowest_price": lowest_price  # Det lägsta priset per timme
         })
     except Exception as e:
         return jsonify({
             "error": f"Error starting charge: {str(e)}"
         }), 500
-
-# Stop charging
-@app.route('/stop_charge', methods=['POST'])
-def stop_charging():
-    global battery_level
-    battery_level = 20  # Reset to start level when stopping
-    return jsonify({
-        "status": "Charging stopped",
-        "battery_level": battery_level
-    })
-
+    
+    
 # Get current battery level
 @app.route('/get_battery_level', methods=['GET'])
 def get_battery_level():
@@ -77,20 +82,18 @@ def get_battery_level():
     })
 
 
-@app.route('/baseload', methods=['GET'])
-def get_baseload():
+app.route('/household_consumption', methods=['GET'])
+def get_household_consumption():
     try:
-        # Simulerad hushållsförbrukning per timme (24 timmar)
-        consumption_data = [random.uniform(0.5, 2.5) for _ in range(24)]  # Exempel på hushållens förbrukning
-        avg_consumption = sum(consumption_data) / len(consumption_data)
+        # Simulera hushållens förbrukning per timme (24 timmar)
+        consumption_data = [random.uniform(0.5, 3.5) for _ in range(24)]  # Exempel på hushållens förbrukning
         return jsonify({
-            "baseload": avg_consumption,
-            "message": "Genomsnittlig baslast för hushåll"
+            "household_consumption": consumption_data
         })
     except Exception as e:
         return jsonify({
-            "error": f"Fel vid hämtning av baslast: {str(e)}"
-        }), 500
+            "error": f"Fel vid hämtning av hushållsförbrukning: {str(e)}"
+        }), 500  # Server error
 
 
 if __name__ == "__main__":
