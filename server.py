@@ -82,19 +82,6 @@ def get_battery_level():
     })
 
 
-app.route('/household_consumption', methods=['GET'])
-def get_household_consumption():
-    try:
-        # Simulera hushållens förbrukning per timme (24 timmar)
-        consumption_data = [random.uniform(0.5, 3.5) for _ in range(24)]  # Exempel på hushållens förbrukning
-        return jsonify({
-            "household_consumption": consumption_data
-        })
-    except Exception as e:
-        return jsonify({
-            "error": f"Fel vid hämtning av hushållsförbrukning: {str(e)}"
-        }), 500  # Server error
-
 
 if __name__ == "__main__":
     app.run(debug=True)
